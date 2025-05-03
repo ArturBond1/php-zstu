@@ -12,11 +12,13 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
-use Symfony\Component\Serializer\Annotation\Groups;
+use Doctrine\ORM\QueryBuilder;
 
 #[Route('/api/treatments')]
 class TreatmentController extends AbstractController
 {
+    private const DEFAULT_ITEMS_PER_PAGE = 10;
+
     private $entityManager;
     private $treatmentRepository;
     private $serializer;
@@ -31,12 +33,50 @@ class TreatmentController extends AbstractController
     }
 
     #[Route('/', name: 'api_treatments_index', methods: [Request::METHOD_GET])]
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $treatments = $this->treatmentRepository->findAll();
+        $queryBuilder = $this->treatmentRepository->createQueryBuilder('t');
+
+        $this->addFilter($queryBuilder, 't.description', $request->query->get('description'));
+        $this->addFilter($queryBuilder, 't.medication', $request->query->get('medication'));
+        $this->addFilter($queryBuilder, 't.dosage', $request->query->get('dosage'));
+        $this->addFilter($queryBuilder, 'appointment.id', $request->query->get('appointment'));
+
+        $page = $request->query->getInt('page', 1);
+        $itemsPerPage = $request->query->getInt('itemsPerPage', self::DEFAULT_ITEMS_PER_PAGE);
+        $totalItems = count($queryBuilder->getQuery()->getResult());
+        $totalPages = ceil($totalItems / $itemsPerPage);
+
+        $queryBuilder
+            ->setFirstResult(($page - 1) * $itemsPerPage)
+            ->setMaxResults($itemsPerPage);
+
+        $treatments = $queryBuilder
+            ->leftJoin('t.appointment', 'appointment')
+            ->getQuery()
+            ->getResult();
         $jsonTreatments = $this->serializer->serialize($treatments, 'json', ['groups' => 'treatment']);
 
-        return new JsonResponse($jsonTreatments, Response::HTTP_OK, [], true);
+        $response = new JsonResponse($jsonTreatments, Response::HTTP_OK, [], true);
+        $response->headers->set('X-Total-Count', $totalItems);
+        $response->headers->set('X-Current-Page', $page);
+        $response->headers->set('X-Items-Per-Page', $itemsPerPage);
+        $response->headers->set('X-Total-Pages', $totalPages);
+
+        return $response;
+    }
+
+    private function addFilter(QueryBuilder $queryBuilder, string $field, $value): void
+    {
+        if ($value !== null && $value !== '') {
+            $queryBuilder->andWhere($queryBuilder->expr()->like($field, ':'.$this->generateParameterName($field)))
+                ->setParameter($this->generateParameterName($field), '%'.$value.'%');
+        }
+    }
+
+    private function generateParameterName(string $field): string
+    {
+        return str_replace('.', '_', $field) . '_' . uniqid();
     }
 
     #[Route('/{id}', name: 'api_treatments_show', methods: [Request::METHOD_GET])]

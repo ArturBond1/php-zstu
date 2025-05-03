@@ -12,11 +12,13 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
-use Symfony\Component\Serializer\Annotation\Groups;
+use Doctrine\ORM\QueryBuilder;
 
 #[Route('/api/patients')]
 class PatientController extends AbstractController
 {
+    private const DEFAULT_ITEMS_PER_PAGE = 10;
+
     private $entityManager;
     private $patientRepository;
     private $serializer;
@@ -35,12 +37,59 @@ class PatientController extends AbstractController
     }
 
     #[Route('/', name: 'api_patients_index', methods: [Request::METHOD_GET])]
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $patients = $this->patientRepository->findAll();
+        $queryBuilder = $this->patientRepository->createQueryBuilder('p');
+
+        $this->addFilter($queryBuilder, 'p.firstName', $request->query->get('firstName'));
+        $this->addFilter($queryBuilder, 'p.lastName', $request->query->get('lastName'));
+        $this->addFilter($queryBuilder, 'p.dateOfBirth', $request->query->get('dateOfBirth'));
+        $this->addFilter($queryBuilder, 'p.address', $request->query->get('address'));
+        $this->addFilter($queryBuilder, 'p.phoneNumber', $request->query->get('phoneNumber'));
+        $this->addFilter($queryBuilder, 'p.email', $request->query->get('email'));
+
+        $page = $request->query->getInt('page', 1);
+        $itemsPerPage = $request->query->getInt('itemsPerPage', self::DEFAULT_ITEMS_PER_PAGE);
+        $totalItems = count($queryBuilder->getQuery()->getResult());
+        $totalPages = ceil($totalItems / $itemsPerPage);
+
+        $queryBuilder
+            ->setFirstResult(($page - 1) * $itemsPerPage)
+            ->setMaxResults($itemsPerPage);
+
+        $patients = $queryBuilder->getQuery()->getResult();
         $jsonPatients = $this->serializer->serialize($patients, 'json', ['groups' => 'patient']);
 
-        return new JsonResponse($jsonPatients, Response::HTTP_OK, [], true);
+        $response = new JsonResponse($jsonPatients, Response::HTTP_OK, [], true);
+        $response->headers->set('X-Total-Count', $totalItems);
+        $response->headers->set('X-Current-Page', $page);
+        $response->headers->set('X-Items-Per-Page', $itemsPerPage);
+        $response->headers->set('X-Total-Pages', $totalPages);
+
+        return $response;
+    }
+
+    private function addFilter(QueryBuilder $queryBuilder, string $field, $value): void
+    {
+        if ($value !== null && $value !== '') {
+            if ($field === 'p.dateOfBirth') {
+                try {
+                    new \DateTime($value);
+                    $queryBuilder->andWhere($queryBuilder->expr()->eq($field, ':'.$this->generateParameterName($field)))
+                        ->setParameter($this->generateParameterName($field), $value);
+                } catch (\Exception $e) {
+                    // Invalid date format, ignore filter
+                }
+            } else {
+                $queryBuilder->andWhere($queryBuilder->expr()->like($field, ':'.$this->generateParameterName($field)))
+                    ->setParameter($this->generateParameterName($field), '%'.$value.'%');
+            }
+        }
+    }
+
+    private function generateParameterName(string $field): string
+    {
+        return str_replace('.', '_', $field) . '_' . uniqid();
     }
 
     #[Route('/{id}', name: 'api_patients_show', methods: [Request::METHOD_GET])]

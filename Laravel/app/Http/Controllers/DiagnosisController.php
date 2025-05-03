@@ -8,13 +8,27 @@ use Illuminate\Support\Facades\Redirect;
 
 class DiagnosisController extends Controller
 {
+    protected $perPageOptions = [10, 25, 50, 100];
+    protected $defaultPerPage = 10;
 
-    public function index()
+    public function index(Request $request)
     {
-        $diagnoses = Diagnosis::all();
-        return view('diagnoses.index', compact('diagnoses'));
-    }
+        $perPage = $request->input('perPage', $this->defaultPerPage);
+        $diagnoses = Diagnosis::query()
+            ->when($request->filled('name'), function ($query) use ($request) {
+                $query->where('name', 'like', '%' . $request->input('name') . '%');
+            })
+            ->when($request->filled('description'), function ($query) use ($request) {
+                $query->where('description', 'like', '%' . $request->input('description') . '%');
+            })
+            ->paginate($perPage)
+            ->appends($request->query());
 
+        $perPageOptions = $this->perPageOptions;
+        $defaultPerPage = $this->defaultPerPage;
+
+        return view('diagnoses.index', compact('diagnoses', 'perPageOptions', 'defaultPerPage')); // Додайте $defaultPerPage в compact()
+    }
 
     public function create()
     {
@@ -31,7 +45,6 @@ class DiagnosisController extends Controller
     {
         return view('diagnoses.show', compact('diagnosis'));
     }
-
 
     public function edit(Diagnosis $diagnosis)
     {

@@ -12,11 +12,13 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
-use Symfony\Component\Serializer\Annotation\Groups;
+use Doctrine\ORM\QueryBuilder;
 
 #[Route('/api/diagnoses')]
 class DiagnosisController extends AbstractController
 {
+    private const DEFAULT_ITEMS_PER_PAGE = 10;
+
     private $entityManager;
     private $diagnosisRepository;
     private $serializer;
@@ -31,12 +33,45 @@ class DiagnosisController extends AbstractController
     }
 
     #[Route('/', name: 'api_diagnoses_index', methods: [Request::METHOD_GET])]
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $diagnoses = $this->diagnosisRepository->findAll();
+        $queryBuilder = $this->diagnosisRepository->createQueryBuilder('d');
+
+        $this->addFilter($queryBuilder, 'd.name', $request->query->get('name'));
+        $this->addFilter($queryBuilder, 'd.description', $request->query->get('description'));
+
+        $page = $request->query->getInt('page', 1);
+        $itemsPerPage = $request->query->getInt('itemsPerPage', self::DEFAULT_ITEMS_PER_PAGE);
+        $totalItems = count($queryBuilder->getQuery()->getResult());
+        $totalPages = ceil($totalItems / $itemsPerPage);
+
+        $queryBuilder
+            ->setFirstResult(($page - 1) * $itemsPerPage)
+            ->setMaxResults($itemsPerPage);
+
+        $diagnoses = $queryBuilder->getQuery()->getResult();
         $jsonDiagnoses = $this->serializer->serialize($diagnoses, 'json', ['groups' => 'diagnosis']);
 
-        return new JsonResponse($jsonDiagnoses, Response::HTTP_OK, [], true);
+        $response = new JsonResponse($jsonDiagnoses, Response::HTTP_OK, [], true);
+        $response->headers->set('X-Total-Count', $totalItems);
+        $response->headers->set('X-Current-Page', $page);
+        $response->headers->set('X-Items-Per-Page', $itemsPerPage);
+        $response->headers->set('X-Total-Pages', $totalPages);
+
+        return $response;
+    }
+
+    private function addFilter(QueryBuilder $queryBuilder, string $field, $value): void
+    {
+        if ($value !== null && $value !== '') {
+            $queryBuilder->andWhere($queryBuilder->expr()->like($field, ':'.$this->generateParameterName($field)))
+                ->setParameter($this->generateParameterName($field), '%'.$value.'%');
+        }
+    }
+
+    private function generateParameterName(string $field): string
+    {
+        return str_replace('.', '_', $field) . '_' . uniqid();
     }
 
     #[Route('/{id}', name: 'api_diagnoses_show', methods: [Request::METHOD_GET])]

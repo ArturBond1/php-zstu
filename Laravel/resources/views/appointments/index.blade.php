@@ -12,6 +12,35 @@
         <div class="alert alert-success">{{ session('success') }}</div>
     @endif
 
+    <div class="mb-3">
+        <form action="{{ route('appointments.index') }}" method="GET" class="row g-3 align-items-center">
+            <div class="col-auto">
+                <label for="appointment_date" class="form-label">Дата прийому:</label>
+                <input type="date" name="appointment_date" id="appointment_date" class="form-control" value="{{ request('appointment_date') }}">
+            </div>
+            <div class="col-auto">
+                <label for="status" class="form-label">Статус:</label>
+                <input type="text" name="status" id="status" class="form-control" value="{{ request('status') }}">
+            </div>
+            <div class="col-auto">
+                <label for="patient_id" class="form-label">ID пацієнта:</label>
+                <input type="number" name="patient_id" id="patient_id" class="form-control" value="{{ request('patient_id') }}">
+            </div>
+            <div class="col-auto">
+                <label for="doctor_id" class="form-label">ID лікаря:</label>
+                <input type="number" name="doctor_id" id="doctor_id" class="form-control" value="{{ request('doctor_id') }}">
+            </div>
+            <div class="col-auto">
+                <label for="diagnosis_id" class="form-label">ID діагнозу:</label>
+                <input type="number" name="diagnosis_id" id="diagnosis_id" class="form-control" value="{{ request('diagnosis_id') }}">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">Фільтрувати</button>
+                <a href="{{ route('appointments.index') }}" class="btn btn-secondary">Скинути</a>
+            </div>
+        </form>
+    </div>
+
     <a href="{{ route('appointments.create') }}" class="btn btn-primary mb-3">Додати новий прийом</a>
 
     @if ($appointments->isEmpty())
@@ -51,6 +80,19 @@
             @endforeach
             </tbody>
         </table>
+
+        {{ $appointments->links() }}
+
+        <div class="mt-3">
+            <form action="{{ route('appointments.index') }}" method="GET" class="d-inline">
+                <label for="perPage">Показати на сторінці:</label>
+                <select name="perPage" id="perPage" class="form-select form-select-sm d-inline-block w-auto" onchange="this.form.submit()">
+                    @foreach ($perPageOptions as $option)
+                        <option value="{{ $option }}" {{ request('perPage', $defaultPerPage) == $option ? 'selected' : '' }}>{{ $option }}</option>
+                    @endforeach
+                </select>
+            </form>
+        </div>
     @endif
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

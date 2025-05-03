@@ -12,11 +12,13 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
-use Symfony\Component\Serializer\Annotation\Groups;
+use Doctrine\ORM\QueryBuilder;
 
 #[Route('/api/doctors')]
 class DoctorController extends AbstractController
 {
+    private const DEFAULT_ITEMS_PER_PAGE = 10;
+
     private $entityManager;
     private $doctorRepository;
     private $serializer;
@@ -31,12 +33,48 @@ class DoctorController extends AbstractController
     }
 
     #[Route('/', name: 'api_doctors_index', methods: [Request::METHOD_GET])]
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $doctors = $this->doctorRepository->findAll();
+        $queryBuilder = $this->doctorRepository->createQueryBuilder('d');
+
+        $this->addFilter($queryBuilder, 'd.firstName', $request->query->get('firstName'));
+        $this->addFilter($queryBuilder, 'd.lastName', $request->query->get('lastName'));
+        $this->addFilter($queryBuilder, 'd.specialization', $request->query->get('specialization'));
+        $this->addFilter($queryBuilder, 'd.phoneNumber', $request->query->get('phoneNumber'));
+        $this->addFilter($queryBuilder, 'd.email', $request->query->get('email'));
+
+        $page = $request->query->getInt('page', 1);
+        $itemsPerPage = $request->query->getInt('itemsPerPage', self::DEFAULT_ITEMS_PER_PAGE);
+        $totalItems = count($queryBuilder->getQuery()->getResult());
+        $totalPages = ceil($totalItems / $itemsPerPage);
+
+        $queryBuilder
+            ->setFirstResult(($page - 1) * $itemsPerPage)
+            ->setMaxResults($itemsPerPage);
+
+        $doctors = $queryBuilder->getQuery()->getResult();
         $jsonDoctors = $this->serializer->serialize($doctors, 'json', ['groups' => 'doctor']);
 
-        return new JsonResponse($jsonDoctors, Response::HTTP_OK, [], true);
+        $response = new JsonResponse($jsonDoctors, Response::HTTP_OK, [], true);
+        $response->headers->set('X-Total-Count', $totalItems);
+        $response->headers->set('X-Current-Page', $page);
+        $response->headers->set('X-Items-Per-Page', $itemsPerPage);
+        $response->headers->set('X-Total-Pages', $totalPages);
+
+        return $response;
+    }
+
+    private function addFilter(QueryBuilder $queryBuilder, string $field, $value): void
+    {
+        if ($value !== null && $value !== '') {
+            $queryBuilder->andWhere($queryBuilder->expr()->like($field, ':'.$this->generateParameterName($field)))
+                ->setParameter($this->generateParameterName($field), '%'.$value.'%');
+        }
+    }
+
+    private function generateParameterName(string $field): string
+    {
+        return str_replace('.', '_', $field) . '_' . uniqid();
     }
 
     #[Route('/{id}', name: 'api_doctors_show', methods: [Request::METHOD_GET])]

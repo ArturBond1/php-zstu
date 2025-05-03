@@ -8,11 +8,35 @@ use Illuminate\Support\Facades\Redirect;
 
 class DoctorController extends Controller
 {
+    protected $perPageOptions = [10, 25, 50, 100];
+    protected $defaultPerPage = 10;
 
-    public function index()
+    public function index(Request $request)
     {
-        $doctors = Doctor::all();
-        return view('doctors.index', compact('doctors'));
+        $perPage = $request->input('perPage', $this->defaultPerPage);
+        $doctors = Doctor::query()
+            ->when($request->filled('first_name'), function ($query) use ($request) {
+                $query->where('first_name', 'like', '%' . $request->input('first_name') . '%');
+            })
+            ->when($request->filled('last_name'), function ($query) use ($request) {
+                $query->where('last_name', 'like', '%' . $request->input('last_name') . '%');
+            })
+            ->when($request->filled('specialization'), function ($query) use ($request) {
+                $query->where('specialization', 'like', '%' . $request->input('specialization') . '%');
+            })
+            ->when($request->filled('phone_number'), function ($query) use ($request) {
+                $query->where('phone_number', 'like', '%' . $request->input('phone_number') . '%');
+            })
+            ->when($request->filled('email'), function ($query) use ($request) {
+                $query->where('email', 'like', '%' . $request->input('email') . '%');
+            })
+            ->paginate($perPage)
+            ->appends($request->query());
+
+        $perPageOptions = $this->perPageOptions;
+        $defaultPerPage = $this->defaultPerPage;
+
+        return view('doctors.index', compact('doctors', 'perPageOptions', 'defaultPerPage')); // Додайте $defaultPerPage в compact()
     }
 
     public function create()

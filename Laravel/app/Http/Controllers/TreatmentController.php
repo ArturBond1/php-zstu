@@ -9,10 +9,33 @@ use Illuminate\Support\Facades\Redirect;
 
 class TreatmentController extends Controller
 {
-    public function index()
+    protected $perPageOptions = [10, 25, 50, 100];
+    protected $defaultPerPage = 10;
+
+    public function index(Request $request)
     {
-        $treatments = Treatment::with('appointment')->get();
-        return view('treatments.index', compact('treatments'));
+        $perPage = $request->input('perPage', $this->defaultPerPage);
+        $treatments = Treatment::with('appointment')
+            ->when($request->filled('appointment_id'), function ($query) use ($request) {
+                $query->where('appointment_id', $request->input('appointment_id'));
+            })
+            ->when($request->filled('description'), function ($query) use ($request) {
+                $query->where('description', 'like', '%' . $request->input('description') . '%');
+            })
+            ->when($request->filled('medication'), function ($query) use ($request) {
+                $query->where('medication', 'like', '%' . $request->input('medication') . '%');
+            })
+            ->when($request->filled('dosage'), function ($query) use ($request) {
+                $query->where('dosage', 'like', '%' . $request->input('dosage') . '%');
+            })
+            ->paginate($perPage)
+            ->appends($request->query());
+
+        $perPageOptions = $this->perPageOptions;
+        $defaultPerPage = $this->defaultPerPage;
+        $appointments = Appointment::all();
+
+        return view('treatments.index', compact('treatments', 'perPageOptions', 'defaultPerPage', 'appointments'));
     }
 
     public function create()

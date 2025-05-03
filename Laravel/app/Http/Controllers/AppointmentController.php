@@ -11,11 +11,35 @@ use Illuminate\Support\Facades\Redirect;
 
 class AppointmentController extends Controller
 {
+    protected $perPageOptions = [10, 25, 50, 100];
+    protected $defaultPerPage = 10;
 
-    public function index()
+    public function index(Request $request)
     {
-        $appointments = Appointment::with(['patient', 'doctor', 'diagnosis'])->get();
-        return view('appointments.index', compact('appointments'));
+        $perPage = $request->input('perPage', $this->defaultPerPage);
+        $appointments = Appointment::with(['patient', 'doctor', 'diagnosis'])
+            ->when($request->filled('appointment_date'), function ($query) use ($request) {
+                $query->where('appointment_date', $request->input('appointment_date'));
+            })
+            ->when($request->filled('status'), function ($query) use ($request) {
+                $query->where('status', $request->input('status'));
+            })
+            ->when($request->filled('patient_id'), function ($query) use ($request) {
+                $query->where('patient_id', $request->input('patient_id'));
+            })
+            ->when($request->filled('doctor_id'), function ($query) use ($request) {
+                $query->where('doctor_id', $request->input('doctor_id'));
+            })
+            ->when($request->filled('diagnosis_id'), function ($query) use ($request) {
+                $query->where('diagnosis_id', $request->input('diagnosis_id'));
+            })
+            ->paginate($perPage)
+            ->appends($request->query());
+
+        $perPageOptions = $this->perPageOptions;
+        $defaultPerPage = $this->defaultPerPage;
+
+        return view('appointments.index', compact('appointments', 'perPageOptions', 'defaultPerPage')); // And add $defaultPerPage here
     }
 
     public function create()

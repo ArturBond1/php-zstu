@@ -16,10 +16,13 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Doctrine\ORM\QueryBuilder;
 
 #[Route('/api/appointments')]
 class AppointmentController extends AbstractController
 {
+    private const DEFAULT_ITEMS_PER_PAGE = 10;
+
     public function __construct(
         private EntityManagerInterface $entityManager,
         private AppointmentRepository $appointmentRepository,
@@ -32,16 +35,56 @@ class AppointmentController extends AbstractController
     ) {}
 
     #[Route('/', name: 'appointment_index', methods: ['GET'])]
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $appointments = $this->appointmentRepository->findAll();
+        $queryBuilder = $this->appointmentRepository->createQueryBuilder('a');
+        $this->addFilter($queryBuilder, 'a.appointmentDate', $request->query->get('appointmentDate'));
+        $this->addFilter($queryBuilder, 'a.status', $request->query->get('status'));
+        $this->addFilter($queryBuilder, 'patient.id', $request->query->get('patient'));
+        $this->addFilter($queryBuilder, 'doctor.id', $request->query->get('doctor'));
+        $this->addFilter($queryBuilder, 'diagnosis.id', $request->query->get('diagnosis'));
+
+        $page = $request->query->getInt('page', 1);
+        $itemsPerPage = $request->query->getInt('itemsPerPage', self::DEFAULT_ITEMS_PER_PAGE);
+        $totalItems = count($queryBuilder->getQuery()->getResult());
+        $totalPages = ceil($totalItems / $itemsPerPage);
+
+        $queryBuilder
+            ->setFirstResult(($page - 1) * $itemsPerPage)
+            ->setMaxResults($itemsPerPage);
+
+        $appointments = $queryBuilder
+            ->leftJoin('a.patient', 'patient')
+            ->leftJoin('a.doctor', 'doctor')
+            ->leftJoin('a.diagnosis', 'diagnosis')
+            ->getQuery()
+            ->getResult();
+
         $data = $this->serializer->serialize($appointments, 'json', [
             'groups' => ['appointment', 'patient', 'doctor', 'diagnosis', 'treatment']
         ]);
 
-        return new JsonResponse($data, Response::HTTP_OK, [], true);
+        $response = new JsonResponse($data, Response::HTTP_OK, [], true);
+        $response->headers->set('X-Total-Count', $totalItems);
+        $response->headers->set('X-Current-Page', $page);
+        $response->headers->set('X-Items-Per-Page', $itemsPerPage);
+        $response->headers->set('X-Total-Pages', $totalPages);
+
+        return $response;
     }
 
+    private function addFilter(QueryBuilder $queryBuilder, string $field, $value): void
+    {
+        if ($value !== null && $value !== '') {
+            $queryBuilder->andWhere($queryBuilder->expr()->eq($field, ':'.$this->generateParameterName($field)))
+                ->setParameter($this->generateParameterName($field), $value);
+        }
+    }
+
+    private function generateParameterName(string $field): string
+    {
+        return str_replace('.', '_', $field) . '_' . uniqid();
+    }
 
     #[Route('/{id}', name: 'appointment_show', methods: ['GET'])]
     public function show(int $id): JsonResponse
