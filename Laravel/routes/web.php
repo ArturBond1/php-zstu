@@ -9,6 +9,7 @@ use App\Http\Controllers\DoctorController;
 use App\Http\Controllers\PatientController;
 use App\Http\Controllers\TreatmentController;
 
+
 Route::get('/', function () {
     return view('welcome');
 });
@@ -23,7 +24,6 @@ Route::prefix('products')->group(function () {
     Route::patch('/{product}', [ProductController::class, 'update']);
     Route::delete('/{product}', [ProductController::class, 'destroy'])->name('products.destroy');
     Route::patch('/{product}', [ProductController::class, 'partialUpdate'])->name('products.partialUpdate');
-
 });
 
 Route::resource('patients', PatientController::class);
@@ -31,3 +31,7 @@ Route::resource('doctors', DoctorController::class);
 Route::resource('diagnoses', DiagnosisController::class);
 Route::resource('appointments', AppointmentController::class);
 Route::resource('treatments', TreatmentController::class);
+
+Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
+    return $request->user();
+});
