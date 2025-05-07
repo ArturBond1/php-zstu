@@ -32,6 +32,6 @@ Route::resource('diagnoses', DiagnosisController::class);
 Route::resource('appointments', AppointmentController::class);
 Route::resource('treatments', TreatmentController::class);
 
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
-});
+Auth::routes();
+
+Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');

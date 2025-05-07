@@ -6,6 +6,11 @@
 parameters:
 
 services:
+
+    App\Command\CreateUserCommand:
+        arguments: [ '@doctrine.orm.entity_manager', '@security.password_hasher' ]
+        tags: [ 'console.command' ]
+
     # default configuration for services in *this* file
     _defaults:
         autowire: true      # Automatically injects dependencies in your services.
